@@ -1,0 +1,1339 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0a0a0a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Dominó">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='40' fill='%230a0a0a'/%3E%3Crect x='35' y='25' width='110' height='130' rx='14' fill='%23fafafa'/%3E%3Cline x1='40' y1='90' x2='140' y2='90' stroke='%230a0a0a' stroke-width='3'/%3E%3Ccircle cx='65' cy='55' r='7' fill='%230a0a0a'/%3E%3Ccircle cx='115' cy='55' r='7' fill='%230a0a0a'/%3E%3Ccircle cx='65' cy='125' r='7' fill='%230a0a0a'/%3E%3Ccircle cx='90' cy='125' r='7' fill='%230a0a0a'/%3E%3Ccircle cx='115' cy='125' r='7' fill='%230a0a0a'/%3E%3C/svg%3E">
+<title>Dominó - Contador</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; height: 100%; overscroll-behavior: none; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    background: #0a0a0a; color: #fafafa; font-size: 16px; line-height: 1.4;
+    user-select: none; -webkit-user-select: none;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; max-width: 900px; margin: 0 auto; }
+  .screen { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; display: none; }
+  .screen.active { display: block; }
+
+  .header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px 10px; border-bottom: 0.5px solid #2a2a2a;
+  }
+  .header h1 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+  .header .meta { font-size: 12px; color: #6b6b70; display: flex; align-items: center; gap: 6px; }
+
+  /* Sync indicator */
+  .sync-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: #6b6b70;
+    transition: background 0.3s;
+    flex-shrink: 0;
+  }
+  .sync-dot.synced { background: #4ade80; }
+  .sync-dot.syncing { background: #fbbf24; animation: dotpulse 1s ease-in-out infinite; }
+  .sync-dot.offline { background: #6b6b70; }
+  .sync-dot.error { background: #ef4444; }
+  @keyframes dotpulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  .tabbar {
+    display: flex; justify-content: space-around;
+    background: #141414; border-top: 0.5px solid #2a2a2a;
+    padding: 6px 0 calc(6px + env(safe-area-inset-bottom));
+  }
+  .tab {
+    flex: 1; background: none; border: none; color: #6b6b70;
+    padding: 8px 4px; cursor: pointer; font-size: 11px;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    font-family: inherit;
+  }
+  .tab.active { color: #fafafa; }
+  .tab svg { width: 22px; height: 22px; }
+
+  .scoreboard { display: grid; grid-template-columns: 1fr 1fr; height: 100%; min-height: 0; }
+  .team {
+    display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+    padding: 20px 14px; position: relative; transition: background 0.2s;
+  }
+  .team.t1 { background: linear-gradient(180deg, rgba(59,130,246,0.18), rgba(59,130,246,0.04)); }
+  .team.t2 { background: linear-gradient(180deg, rgba(239,68,68,0.18), rgba(239,68,68,0.04)); }
+  .team.danger { animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse {
+    0%,100% { box-shadow: inset 0 0 0 0 rgba(239,68,68,0); }
+    50% { box-shadow: inset 0 0 0 3px rgba(239,68,68,0.5); }
+  }
+  .team-name { font-size: 15px; font-weight: 600; margin: 0 0 2px; text-align: center; }
+  .team.t1 .team-name { color: #93c5fd; }
+  .team.t2 .team-name { color: #fca5a5; }
+  .team-players { font-size: 11px; color: #6b6b70; text-align: center; margin-bottom: 14px; min-height: 14px; }
+  .score { font-size: 88px; font-weight: 200; letter-spacing: -0.04em; line-height: 1; margin: 0; }
+  .team.t1 .score { color: #dbeafe; }
+  .team.t2 .score { color: #fee2e2; }
+  .score-meta { font-size: 11px; color: #6b6b70; margin-top: 6px; }
+
+  .rounds {
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    padding: 10px 0; min-height: 32px; max-height: 220px;
+    overflow-y: auto; width: 100%; scrollbar-width: thin;
+  }
+  .rounds::-webkit-scrollbar { width: 4px; }
+  .rounds::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+  .round-chip {
+    background: rgba(255,255,255,0.06); border: 0.5px solid rgba(255,255,255,0.1);
+    padding: 2px 0; border-radius: 4px;
+    font-size: 13px; font-variant-numeric: tabular-nums;
+    text-align: center; min-width: 44px; font-weight: 500;
+  }
+  .team.t1 .round-chip { color: #93c5fd; border-color: rgba(59,130,246,0.3); }
+  .team.t2 .round-chip { color: #fca5a5; border-color: rgba(239,68,68,0.3); }
+
+  .add-btn {
+    width: 64px; height: 64px; border-radius: 50%; border: none; cursor: pointer;
+    font-size: 36px; font-weight: 300; color: white;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+    transition: transform 0.1s; font-family: inherit;
+  }
+  .add-btn:active { transform: scale(0.92); }
+  .team.t1 .add-btn { background: #2563eb; }
+  .team.t2 .add-btn { background: #dc2626; }
+
+  .game-actions {
+    grid-column: 1 / -1; display: flex; gap: 8px;
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+    border-top: 0.5px solid #2a2a2a; background: #0a0a0a;
+  }
+  .btn {
+    flex: 1; background: #1f1f1f; color: #fafafa;
+    border: 0.5px solid #2a2a2a; border-radius: 10px;
+    padding: 11px 12px; cursor: pointer;
+    font-size: 14px; font-weight: 500; font-family: inherit;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .btn:active { background: #2a2a2a; }
+  .btn.primary { background: #2563eb; border-color: #2563eb; color: white; }
+  .btn.primary:active { background: #1d4ed8; }
+  .btn.ghost { background: transparent; }
+  .btn.danger { color: #fca5a5; }
+  .btn:disabled { opacity: 0.4; }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: #2563eb; color: white; border: none; border-radius: 999px;
+    padding: 11px 22px; font-size: 14px; font-weight: 500;
+    cursor: pointer; font-family: inherit;
+    transition: transform 0.1s, background 0.15s;
+  }
+  .pill:active { transform: scale(0.96); background: #1d4ed8; }
+  .pill svg { width: 16px; height: 16px; }
+  .pill.full-width { width: 100%; justify-content: center; padding: 14px 22px; font-size: 15px; }
+  .pill:disabled { background: #1f1f1f; color: #6b6b70; cursor: not-allowed; }
+  .pill:disabled:active { transform: none; }
+
+  .empty-state {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 100%; padding: 40px 24px; text-align: center;
+  }
+  .empty-state svg { width: 64px; height: 64px; color: #3a3a3f; margin-bottom: 20px; }
+  .empty-state h2 { margin: 0 0 8px; font-size: 22px; font-weight: 600; }
+  .empty-state p { margin: 0 0 24px; color: #a1a1aa; max-width: 280px; }
+
+  .section { padding: 16px 18px; }
+  .section h2 {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.05em;
+    text-transform: uppercase; color: #6b6b70; margin: 0 0 10px;
+  }
+  .list { background: #141414; border: 0.5px solid #2a2a2a; border-radius: 14px; overflow: hidden; }
+  .list-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 13px 16px; border-bottom: 0.5px solid #2a2a2a; cursor: pointer;
+  }
+  .list-item:last-child { border-bottom: none; }
+  .list-item:active { background: #1f1f1f; }
+  .list-item-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+  .list-item-title { font-size: 15px; font-weight: 500; }
+  .list-item-sub { font-size: 12px; color: #6b6b70; }
+  .list-item-right { font-size: 14px; color: #a1a1aa; font-variant-numeric: tabular-nums; }
+
+  .team-builder { padding: 16px 18px; }
+  .team-builder h2 { margin: 0 0 10px; font-size: 18px; font-weight: 600; }
+  .team-card {
+    background: #141414; border: 0.5px solid #2a2a2a; border-radius: 14px;
+    padding: 14px; margin-bottom: 14px;
+  }
+  .team-card.t1 { border-left: 3px solid #3b82f6; }
+  .team-card.t2 { border-left: 3px solid #ef4444; }
+  .team-card label { display: block; font-size: 12px; color: #6b6b70; margin-bottom: 6px; }
+  .team-card input[type=text] {
+    width: 100%; background: #0a0a0a; color: #fafafa;
+    border: 0.5px solid #2a2a2a; border-radius: 8px;
+    padding: 10px 12px; font-size: 15px; font-family: inherit;
+    margin-bottom: 12px; outline: none;
+  }
+  .team-card input[type=text]:focus { border-color: #3b82f6; }
+  .player-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .player-chip {
+    background: #1f1f1f; color: #a1a1aa;
+    border: 0.5px solid #2a2a2a; border-radius: 999px;
+    padding: 7px 14px; font-size: 13px; cursor: pointer;
+    font-family: inherit;
+  }
+  .player-chip.selected.t1 { background: #1e40af; color: #dbeafe; border-color: #3b82f6; }
+  .player-chip.selected.t2 { background: #991b1b; color: #fee2e2; border-color: #ef4444; }
+  .player-chip:disabled { opacity: 0.3; }
+
+  .stat-row {
+    display: grid; grid-template-columns: 1fr 42px 42px 42px 56px;
+    padding: 11px 16px; align-items: center;
+    border-bottom: 0.5px solid #2a2a2a;
+    font-size: 14px; gap: 4px;
+  }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-row.header {
+    font-size: 11px; color: #6b6b70; text-transform: uppercase;
+    letter-spacing: 0.05em; font-weight: 600; padding: 8px 16px;
+  }
+  .stat-row .name { font-weight: 500; display: flex; align-items: center; gap: 8px; }
+  .stat-row .num { text-align: center; font-variant-numeric: tabular-nums; }
+  .rank-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; border-radius: 50%;
+    font-size: 11px; font-weight: 600;
+    background: #1f1f1f; color: #a1a1aa;
+  }
+  .rank-badge.gold { background: #422006; color: #fbbf24; }
+  .rank-badge.silver { background: #1f1f1f; color: #d1d5db; }
+  .rank-badge.bronze { background: #422006; color: #fb923c; }
+
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+    display: none; align-items: flex-end; justify-content: center;
+    z-index: 100;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal {
+    background: #1a1a1a; border-radius: 18px 18px 0 0;
+    width: 100%; max-width: 500px;
+    padding: 20px 18px calc(20px + env(safe-area-inset-bottom));
+    border-top: 0.5px solid #2a2a2a;
+  }
+  @media (min-width: 600px) {
+    .modal-backdrop { align-items: center; }
+    .modal { border-radius: 18px; max-width: 420px; }
+  }
+  .modal h3 { margin: 0 0 4px; font-size: 16px; font-weight: 600; text-align: center; }
+  .modal .target-team { text-align: center; font-size: 22px; font-weight: 600; margin: 0 0 16px; }
+  .modal .target-team.t1 { color: #93c5fd; }
+  .modal .target-team.t2 { color: #fca5a5; }
+
+  .keypad-display {
+    background: #0a0a0a; border: 0.5px solid #2a2a2a; border-radius: 12px;
+    padding: 18px; margin-bottom: 14px; text-align: center;
+    font-size: 48px; font-weight: 300;
+    font-variant-numeric: tabular-nums; min-height: 84px; color: #fafafa;
+  }
+  .keypad-display.empty { color: #3a3a3f; }
+  .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+  .key {
+    background: #2a2a2a; color: #fafafa; border: none; border-radius: 10px;
+    padding: 16px; cursor: pointer;
+    font-size: 22px; font-weight: 400; font-family: inherit;
+  }
+  .key:active { background: #3a3a3a; }
+  .key.action { background: #1f1f1f; font-size: 14px; }
+  .modal-actions { display: flex; gap: 8px; }
+  .modal-actions .btn { flex: 1; padding: 14px; font-size: 15px; }
+
+  .game-over {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+    display: none; align-items: center; justify-content: center;
+    z-index: 200; padding: 24px;
+  }
+  .game-over.open { display: flex; }
+  .game-over-card {
+    background: #1a1a1a; border: 0.5px solid #2a2a2a;
+    border-radius: 18px; padding: 28px 24px;
+    max-width: 360px; width: 100%; text-align: center;
+  }
+  .game-over-card .label { font-size: 11px; color: #6b6b70; letter-spacing: 0.1em; text-transform: uppercase; margin: 0; }
+  .game-over-card .winner { font-size: 28px; font-weight: 700; margin: 6px 0 4px; }
+  .game-over-card .winner.t1 { color: #93c5fd; }
+  .game-over-card .winner.t2 { color: #fca5a5; }
+  .game-over-card .subtitle { color: #a1a1aa; font-size: 14px; margin: 0 0 22px; }
+  .game-over-card .final-scores {
+    display: flex; justify-content: space-around; padding: 14px 0;
+    border-top: 0.5px solid #2a2a2a; border-bottom: 0.5px solid #2a2a2a;
+    margin-bottom: 22px;
+  }
+  .final-scores div { display: flex; flex-direction: column; }
+  .final-scores .s-name { font-size: 11px; color: #6b6b70; text-transform: uppercase; letter-spacing: 0.05em; }
+  .final-scores .s-num { font-size: 32px; font-weight: 200; font-variant-numeric: tabular-nums; }
+
+  .history-card {
+    background: #141414; border: 0.5px solid #2a2a2a; border-radius: 14px;
+    padding: 14px 16px; margin-bottom: 10px;
+  }
+  .history-card-head {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 8px;
+  }
+  .history-card-date { font-size: 12px; color: #6b6b70; }
+  .history-card-teams { display: flex; justify-content: space-between; gap: 12px; }
+  .history-card-team { flex: 1; }
+  .history-card-team.winner .h-team-name { color: #4ade80; }
+  .history-card-team .h-team-name { font-size: 14px; font-weight: 500; }
+  .history-card-team.winner .h-team-name::after { content: " ✓"; }
+  .history-card-team .h-team-players { font-size: 11px; color: #6b6b70; margin: 1px 0 4px; }
+  .history-card-team .h-team-score { font-size: 22px; font-weight: 300; font-variant-numeric: tabular-nums; }
+
+  .add-player {
+    display: flex; gap: 8px; padding: 12px 16px;
+    border-top: 0.5px solid #2a2a2a;
+  }
+  .add-player input {
+    flex: 1; background: #0a0a0a; color: #fafafa;
+    border: 0.5px solid #2a2a2a; border-radius: 8px;
+    padding: 9px 12px; font-size: 14px; outline: none;
+    font-family: inherit;
+  }
+  .add-player input:focus { border-color: #3b82f6; }
+  .add-player button {
+    background: #2563eb; color: white; border: none; border-radius: 8px;
+    padding: 9px 16px; font-size: 14px; font-weight: 500;
+    cursor: pointer; font-family: inherit;
+  }
+  .add-player button:disabled { background: #1f1f1f; color: #6b6b70; }
+
+  .delete-btn {
+    background: transparent; border: none; color: #fca5a5;
+    cursor: pointer; padding: 6px; font-size: 18px; font-family: inherit;
+  }
+  .hint { font-size: 12px; color: #6b6b70; text-align: center; margin: 8px 0 0; }
+
+  .records-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .record-card {
+    background: #141414; border: 0.5px solid #2a2a2a;
+    border-radius: 12px; padding: 12px 14px;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .record-label {
+    font-size: 10.5px; color: #6b6b70;
+    text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;
+  }
+  .record-value {
+    font-size: 28px; font-weight: 300; line-height: 1.1;
+    font-variant-numeric: tabular-nums; color: #fafafa; margin-top: 4px;
+  }
+  .record-value.amber { color: #fbbf24; }
+  .record-value.green { color: #4ade80; }
+  .record-value.red { color: #fca5a5; }
+  .record-sub { font-size: 11px; color: #a1a1aa; margin-top: 4px; line-height: 1.3; }
+  .record-empty { font-size: 24px; font-weight: 300; color: #3a3a3f; }
+
+  .team-row {
+    display: grid; grid-template-columns: 26px 1fr 32px 32px 32px 44px;
+    padding: 11px 16px; align-items: center;
+    border-bottom: 0.5px solid #2a2a2a;
+    font-size: 14px; gap: 6px;
+  }
+  .team-row:last-child { border-bottom: none; }
+  .team-row.header {
+    font-size: 11px; color: #6b6b70; text-transform: uppercase;
+    letter-spacing: 0.05em; font-weight: 600; padding: 8px 16px;
+  }
+  .team-row .t-name { font-weight: 500; font-size: 13px; line-height: 1.2; }
+  .team-row .num { text-align: center; font-variant-numeric: tabular-nums; font-size: 13px; }
+
+  /* Loading screen */
+  .loading-overlay {
+    position: fixed; inset: 0; background: #0a0a0a;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 300; flex-direction: column; gap: 16px;
+  }
+  .loading-overlay.hidden { display: none; }
+  .spinner {
+    width: 32px; height: 32px; border-radius: 50%;
+    border: 2.5px solid #1f1f1f; border-top-color: #2563eb;
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-overlay p { color: #6b6b70; font-size: 13px; margin: 0; }
+</style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loading">
+  <div class="spinner"></div>
+  <p>Cargando la casa…</p>
+</div>
+
+<div class="app">
+
+  <div class="screen active" id="screen-home">
+    <div class="header">
+      <div>
+        <h1>Dominó</h1>
+        <div class="meta">
+          <span class="sync-dot" id="sync-dot"></span>
+          <span id="game-meta">Listo para jugar</span>
+        </div>
+      </div>
+      <button class="btn ghost" id="btn-new-from-home" style="flex: 0; padding: 8px 14px;">Nueva</button>
+    </div>
+
+    <div id="active-game" style="display: none; height: calc(100% - 60px); flex-direction: column;">
+      <div class="scoreboard">
+        <div class="team t1" data-team="0">
+          <div>
+            <p class="team-name" id="t1-name">Equipo 1</p>
+            <p class="team-players" id="t1-players"></p>
+          </div>
+          <div style="text-align: center;">
+            <p class="score" id="t1-score">0</p>
+            <p class="score-meta">de 101</p>
+          </div>
+          <div class="rounds" id="t1-rounds"></div>
+          <button class="add-btn" data-add="0">+</button>
+        </div>
+        <div class="team t2" data-team="1">
+          <div>
+            <p class="team-name" id="t2-name">Equipo 2</p>
+            <p class="team-players" id="t2-players"></p>
+          </div>
+          <div style="text-align: center;">
+            <p class="score" id="t2-score">0</p>
+            <p class="score-meta">de 101</p>
+          </div>
+          <div class="rounds" id="t2-rounds"></div>
+          <button class="add-btn" data-add="1">+</button>
+        </div>
+      </div>
+      <div class="game-actions">
+        <button class="btn" id="btn-undo">↶ Deshacer</button>
+        <button class="btn danger" id="btn-cancel-game">Cancelar</button>
+      </div>
+    </div>
+
+    <div id="no-game" class="empty-state">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="3" width="14" height="18" rx="2"/><line x1="5" y1="12" x2="19" y2="12"/><circle cx="9" cy="7.5" r="1" fill="currentColor"/><circle cx="15" cy="7.5" r="1" fill="currentColor"/><circle cx="9" cy="16.5" r="1" fill="currentColor"/><circle cx="12" cy="16.5" r="1" fill="currentColor"/><circle cx="15" cy="16.5" r="1" fill="currentColor"/></svg>
+      <h2>Listos para echar partida</h2>
+      <p>Arma los equipos y empieza a contar. El primero que llegue a 101 pierde.</p>
+      <button class="pill" id="btn-new-game">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M12 5v14"/></svg>
+        Nueva partida
+      </button>
+    </div>
+  </div>
+
+  <div class="screen" id="screen-new">
+    <div class="header">
+      <h1>Nueva partida</h1>
+      <button class="btn ghost" id="btn-cancel-new" style="flex: 0; padding: 8px 14px;">Cancelar</button>
+    </div>
+    <div class="team-builder">
+      <div class="team-card t1">
+        <label>Equipo 1 (azul)</label>
+        <input type="text" id="new-t1-name" placeholder="Nombre del equipo (opcional)">
+        <label>Jugadores</label>
+        <div class="player-chips" id="t1-chips"></div>
+      </div>
+      <div class="team-card t2">
+        <label>Equipo 2 (rojo)</label>
+        <input type="text" id="new-t2-name" placeholder="Nombre del equipo (opcional)">
+        <label>Jugadores</label>
+        <div class="player-chips" id="t2-chips"></div>
+      </div>
+      <p class="hint" id="new-hint">Selecciona al menos un jugador en cada equipo.</p>
+      <div style="margin-top: 18px; display: flex; justify-content: center;">
+        <button class="pill full-width" id="btn-start-game" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="6 4 20 12 6 20 6 4" fill="currentColor"/></svg>
+          Empezar partida
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="screen" id="screen-stats">
+    <div class="header">
+      <h1>Tabla de la Casa</h1>
+      <div class="meta" id="stats-meta"></div>
+    </div>
+    <div class="section">
+      <h2>Récords</h2>
+      <div class="records-grid" id="records-grid"></div>
+    </div>
+    <div class="section">
+      <h2>Ranking de jugadores</h2>
+      <div class="list" id="stats-list"></div>
+      <p class="hint">G = ganadas, P = perdidas, Z = zapatos hechos, % de victorias.</p>
+    </div>
+    <div class="section">
+      <h2>Equipos más juntados</h2>
+      <div class="list" id="teams-list"></div>
+      <p class="hint">Combinaciones de jugadores que han jugado juntos.</p>
+    </div>
+  </div>
+
+  <div class="screen" id="screen-history">
+    <div class="header">
+      <h1>Historial</h1>
+      <button class="btn ghost" id="btn-clear-history" style="flex: 0; padding: 8px 14px;">Borrar</button>
+    </div>
+    <div class="section">
+      <div id="history-list"></div>
+      <div id="history-empty" class="empty-state" style="display: none; padding: 40px 0;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        <p>Aún no hay partidas registradas.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="screen" id="screen-roster">
+    <div class="header">
+      <h1>Jugadores</h1>
+    </div>
+    <div class="section">
+      <div class="list" id="roster-list"></div>
+      <div class="add-player">
+        <input type="text" id="new-player-name" placeholder="Nombre del jugador" maxlength="20">
+        <button id="btn-add-player">Agregar</button>
+      </div>
+    </div>
+  </div>
+
+  <nav class="tabbar">
+    <button class="tab active" data-screen="home">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12L12 4l9 8"/><path d="M5 10v10h14V10"/></svg>
+      <span>Partida</span>
+    </button>
+    <button class="tab" data-screen="stats">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20V10"/><path d="M12 20V4"/><path d="M20 20v-7"/></svg>
+      <span>Tabla</span>
+    </button>
+    <button class="tab" data-screen="history">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      <span>Historial</span>
+    </button>
+    <button class="tab" data-screen="roster">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg>
+      <span>Jugadores</span>
+    </button>
+  </nav>
+
+</div>
+
+<div class="modal-backdrop" id="keypad-modal">
+  <div class="modal">
+    <h3>Sumar puntos a</h3>
+    <p class="target-team" id="keypad-target">Equipo</p>
+    <div class="keypad-display empty" id="keypad-display">0</div>
+    <div class="keypad">
+      <button class="key" data-k="1">1</button>
+      <button class="key" data-k="2">2</button>
+      <button class="key" data-k="3">3</button>
+      <button class="key" data-k="4">4</button>
+      <button class="key" data-k="5">5</button>
+      <button class="key" data-k="6">6</button>
+      <button class="key" data-k="7">7</button>
+      <button class="key" data-k="8">8</button>
+      <button class="key" data-k="9">9</button>
+      <button class="key action" data-k="clear">C</button>
+      <button class="key" data-k="0">0</button>
+      <button class="key action" data-k="back">⌫</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="btn-keypad-cancel">Cancelar</button>
+      <button class="btn primary" id="btn-keypad-ok">Sumar</button>
+    </div>
+  </div>
+</div>
+
+<div class="game-over" id="game-over">
+  <div class="game-over-card">
+    <p class="label">Partida terminada</p>
+    <p class="winner" id="winner-name">Equipo</p>
+    <p class="subtitle" id="loser-text">ganó</p>
+    <div class="final-scores">
+      <div>
+        <span class="s-name" id="final-t1-name">Equipo 1</span>
+        <span class="s-num" id="final-t1-score">0</span>
+      </div>
+      <div>
+        <span class="s-name" id="final-t2-name">Equipo 2</span>
+        <span class="s-num" id="final-t2-score">0</span>
+      </div>
+    </div>
+    <div style="display: flex; gap: 8px;">
+      <button class="btn" id="btn-go-home">Cerrar</button>
+      <button class="btn primary" id="btn-rematch">Revancha</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============ CONFIG ============
+const STORAGE_KEY = 'domino_state_v2';   // bumped because we sync now
+const TARGET = 101;
+const DEFAULT_PLAYERS = ['Marcos', 'David', 'Ike', 'Moy', 'Benny'];
+const POLL_INTERVAL_MS = 4000;
+const PUSH_DEBOUNCE_MS = 600;
+
+// ============ STATE ============
+let state = defaultState();
+let lastSyncedAt = null;        // server's updated_at we know about
+let pendingPushTimer = null;
+let pushController = null;
+let pollTimer = null;
+let lastUserAction = 0;         // ts of last local change; used to ignore self-echoes from polling
+
+function defaultState() {
+  return {
+    roster: DEFAULT_PLAYERS.map((name, i) => ({
+      id: 'p' + (i+1), name,
+      wins: 0, losses: 0, games: 0,
+      zapatos: 0, zapatosRecibidos: 0
+    })),
+    currentGame: null,
+    history: []
+  };
+}
+
+function migrateState(s) {
+  if (!s || !Array.isArray(s.roster)) return null;
+  s.roster.forEach(p => {
+    if (typeof p.zapatos !== 'number') p.zapatos = 0;
+    if (typeof p.zapatosRecibidos !== 'number') p.zapatosRecibidos = 0;
+  });
+  if (!s.history) s.history = [];
+  return s;
+}
+
+// ============ LOCAL CACHE ============
+function loadLocalState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return migrateState(JSON.parse(raw));
+  } catch(e) { return null; }
+}
+function saveLocalState() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+  catch(e) {}
+}
+
+// ============ SYNC INDICATOR ============
+function setSyncStatus(status) {
+  const dot = document.getElementById('sync-dot');
+  dot.classList.remove('synced','syncing','offline','error');
+  dot.classList.add(status);
+  dot.title = {
+    synced: 'Sincronizado',
+    syncing: 'Sincronizando…',
+    offline: 'Sin conexión — guardado local',
+    error: 'Error de conexión'
+  }[status] || '';
+}
+
+// ============ REMOTE I/O ============
+async function fetchRemoteState() {
+  const r = await fetch('/api/state', { cache: 'no-store' });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+
+async function fetchRemoteCheck() {
+  const r = await fetch('/api/state?check=1', { cache: 'no-store' });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+
+async function pushState() {
+  if (pushController) pushController.abort();
+  pushController = new AbortController();
+  setSyncStatus('syncing');
+  try {
+    const r = await fetch('/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(state),
+      signal: pushController.signal
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const { updated_at } = await r.json();
+    lastSyncedAt = updated_at;
+    setSyncStatus('synced');
+  } catch(e) {
+    if (e.name === 'AbortError') return;
+    console.warn('Push failed', e);
+    setSyncStatus('offline');
+  } finally {
+    pushController = null;
+  }
+}
+
+function schedulePush() {
+  clearTimeout(pendingPushTimer);
+  pendingPushTimer = setTimeout(() => {
+    pendingPushTimer = null;
+    pushState();
+  }, PUSH_DEBOUNCE_MS);
+}
+
+function saveState() {
+  lastUserAction = Date.now();
+  saveLocalState();
+  schedulePush();
+}
+
+// ============ POLLING ============
+function startPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(pollOnce, POLL_INTERVAL_MS);
+}
+
+async function pollOnce() {
+  if (document.hidden) return;
+  if (pendingPushTimer || pushController) return; // we're about to push or pushing
+  // Don't yank state out from under the user mid-interaction
+  if (document.getElementById('keypad-modal').classList.contains('open')) return;
+  if (document.querySelector('.screen.active').id === 'screen-new') return;
+
+  try {
+    const { updated_at } = await fetchRemoteCheck();
+    if (!updated_at) return;
+    if (updated_at !== lastSyncedAt) {
+      const { data, updated_at: ts } = await fetchRemoteState();
+      const migrated = migrateState(data);
+      if (migrated) {
+        state = migrated;
+        saveLocalState();
+        lastSyncedAt = ts;
+        renderAll();
+      }
+    }
+    setSyncStatus('synced');
+  } catch(e) {
+    setSyncStatus('offline');
+  }
+}
+
+// ============ INIT FLOW ============
+async function bootstrap() {
+  setSyncStatus('syncing');
+  // 1. Try local for instant UI
+  const local = loadLocalState();
+  if (local) {
+    state = local;
+  }
+  renderAll();
+  document.getElementById('loading').classList.add('hidden');
+
+  // 2. Pull remote
+  try {
+    const { data, updated_at } = await fetchRemoteState();
+    if (data && data.roster) {
+      const migrated = migrateState(data);
+      if (migrated) {
+        state = migrated;
+        saveLocalState();
+        lastSyncedAt = updated_at;
+        renderAll();
+      }
+    } else {
+      // Server is empty — push our local (or defaults) as the seed
+      await pushState();
+    }
+    setSyncStatus('synced');
+  } catch(e) {
+    console.warn('Initial fetch failed, working offline', e);
+    setSyncStatus('offline');
+  }
+
+  startPolling();
+}
+
+// ============ RE-RENDER WHEN STATE REPLACED ============
+function renderAll() {
+  renderHome();
+  const active = document.querySelector('.screen.active');
+  if (!active) return;
+  const id = active.id.replace('screen-', '');
+  if (id === 'stats') renderStats();
+  else if (id === 'history') renderHistory();
+  else if (id === 'roster') renderRoster();
+  // 'new' screen is excluded — preserves user's mid-setup state
+}
+
+// ============ HELPERS ============
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+function sumPoints(rounds) { return rounds.reduce((a,b) => a + b, 0); }
+function playerName(id) {
+  const p = state.roster.find(p => p.id === id);
+  return p ? p.name : '?';
+}
+function teamDisplayName(team) {
+  if (team.name && team.name.trim()) return team.name.trim();
+  const names = team.playerIds.map(id => playerName(id)).filter(Boolean);
+  if (names.length === 0) return 'Equipo';
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return names.join(' y ');
+  return names.slice(0,-1).join(', ') + ' y ' + names[names.length-1];
+}
+function teamPlayersLabel(team) {
+  if (!team.name || !team.name.trim()) return '';
+  return team.playerIds.map(id => playerName(id)).join(', ');
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ============ SCREEN NAV ============
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
+  document.getElementById('screen-' + name).classList.add('active');
+  document.querySelectorAll('.tab').forEach(el => el.classList.toggle('active', el.dataset.screen === name));
+  if (name === 'home') renderHome();
+  if (name === 'stats') renderStats();
+  if (name === 'history') renderHistory();
+  if (name === 'roster') renderRoster();
+  if (name === 'new') renderNewGame();
+}
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => showScreen(btn.dataset.screen));
+});
+
+// ============ HOME ============
+function renderHome() {
+  const g = state.currentGame;
+  const active = document.getElementById('active-game');
+  const noGame = document.getElementById('no-game');
+  const meta = document.getElementById('game-meta');
+  if (!g) {
+    active.style.display = 'none';
+    noGame.style.display = 'flex';
+    meta.textContent = 'Listo para jugar';
+    return;
+  }
+  active.style.display = 'flex';
+  noGame.style.display = 'none';
+  const t1s = sumPoints(g.team1.rounds);
+  const t2s = sumPoints(g.team2.rounds);
+  meta.textContent = 'Partida en curso · ronda ' + (Math.max(g.team1.rounds.length, g.team2.rounds.length) + 1);
+  document.getElementById('t1-name').textContent = teamDisplayName(g.team1);
+  document.getElementById('t2-name').textContent = teamDisplayName(g.team2);
+  document.getElementById('t1-players').textContent = teamPlayersLabel(g.team1);
+  document.getElementById('t2-players').textContent = teamPlayersLabel(g.team2);
+  document.getElementById('t1-score').textContent = t1s;
+  document.getElementById('t2-score').textContent = t2s;
+  document.querySelector('.team.t1').classList.toggle('danger', t1s >= 80 && t1s < TARGET);
+  document.querySelector('.team.t2').classList.toggle('danger', t2s >= 80 && t2s < TARGET);
+  document.getElementById('t1-rounds').innerHTML = g.team1.rounds.map(n => '<span class="round-chip">' + n + '</span>').join('');
+  document.getElementById('t2-rounds').innerHTML = g.team2.rounds.map(n => '<span class="round-chip">' + n + '</span>').join('');
+  const hasAny = g.team1.rounds.length > 0 || g.team2.rounds.length > 0;
+  document.getElementById('btn-undo').disabled = !hasAny;
+}
+
+// ============ KEYPAD ============
+let keypadTargetTeam = 0;
+let keypadValue = '';
+function openKeypad(teamIdx) {
+  if (!state.currentGame) return;
+  keypadTargetTeam = teamIdx;
+  keypadValue = '';
+  const team = teamIdx === 0 ? state.currentGame.team1 : state.currentGame.team2;
+  const tgt = document.getElementById('keypad-target');
+  tgt.textContent = teamDisplayName(team);
+  tgt.className = 'target-team ' + (teamIdx === 0 ? 't1' : 't2');
+  updateKeypadDisplay();
+  document.getElementById('keypad-modal').classList.add('open');
+}
+function closeKeypad() { document.getElementById('keypad-modal').classList.remove('open'); }
+function updateKeypadDisplay() {
+  const d = document.getElementById('keypad-display');
+  if (keypadValue === '') { d.textContent = '0'; d.classList.add('empty'); }
+  else { d.textContent = keypadValue; d.classList.remove('empty'); }
+}
+document.querySelectorAll('.add-btn').forEach(btn => {
+  btn.addEventListener('click', () => openKeypad(parseInt(btn.dataset.add)));
+});
+document.querySelectorAll('.key').forEach(k => {
+  k.addEventListener('click', () => {
+    const v = k.dataset.k;
+    if (v === 'clear') keypadValue = '';
+    else if (v === 'back') keypadValue = keypadValue.slice(0, -1);
+    else {
+      if (keypadValue.length >= 3) return;
+      keypadValue += v;
+      keypadValue = String(parseInt(keypadValue) || 0);
+      if (keypadValue === '0') keypadValue = '';
+    }
+    updateKeypadDisplay();
+  });
+});
+document.getElementById('btn-keypad-cancel').addEventListener('click', closeKeypad);
+document.getElementById('btn-keypad-ok').addEventListener('click', () => {
+  const points = parseInt(keypadValue) || 0;
+  if (points <= 0) { closeKeypad(); return; }
+  applyPoints(keypadTargetTeam, points);
+  closeKeypad();
+});
+
+function applyPoints(teamIdx, points) {
+  const g = state.currentGame;
+  if (!g) return;
+  const t = teamIdx === 0 ? g.team1 : g.team2;
+  t.rounds.push(points);
+  g.lastTeam = teamIdx;
+  saveState();
+  renderHome();
+  if (sumPoints(t.rounds) >= TARGET) {
+    finishGame(teamIdx === 0 ? 1 : 0);
+  }
+}
+
+// ============ UNDO ============
+document.getElementById('btn-undo').addEventListener('click', () => {
+  const g = state.currentGame;
+  if (!g) return;
+  const last1 = g.team1.rounds.length, last2 = g.team2.rounds.length;
+  if (g.lastTeam === 0 && last1 > 0) { g.team1.rounds.pop(); g.lastTeam = last2 > 0 ? 1 : null; }
+  else if (g.lastTeam === 1 && last2 > 0) { g.team2.rounds.pop(); g.lastTeam = last1 > 0 ? 0 : null; }
+  else if (last1 > last2) g.team1.rounds.pop();
+  else if (last2 > 0) g.team2.rounds.pop();
+  else if (last1 > 0) g.team1.rounds.pop();
+  saveState();
+  renderHome();
+});
+
+document.getElementById('btn-cancel-game').addEventListener('click', () => {
+  if (!confirm('¿Cancelar la partida en curso? No se va a guardar.')) return;
+  state.currentGame = null;
+  saveState();
+  renderHome();
+});
+
+// ============ FINISH GAME ============
+function finishGame(winnerIdx) {
+  const g = state.currentGame;
+  if (!g) return;
+  const finished = {
+    id: uid(),
+    startedAt: g.startedAt,
+    endedAt: Date.now(),
+    team1: { name: g.team1.name, playerIds: g.team1.playerIds.slice(), rounds: g.team1.rounds.slice(), total: sumPoints(g.team1.rounds) },
+    team2: { name: g.team2.name, playerIds: g.team2.playerIds.slice(), rounds: g.team2.rounds.slice(), total: sumPoints(g.team2.rounds) },
+    winner: winnerIdx
+  };
+  state.history.unshift(finished);
+
+  const winners = winnerIdx === 0 ? g.team1.playerIds : g.team2.playerIds;
+  const losers = winnerIdx === 0 ? g.team2.playerIds : g.team1.playerIds;
+  const winnerTotal = winnerIdx === 0 ? finished.team1.total : finished.team2.total;
+  const isZapato = winnerTotal === 0;
+  winners.forEach(id => {
+    const p = state.roster.find(p => p.id === id);
+    if (p) { p.wins++; p.games++; if (isZapato) p.zapatos = (p.zapatos || 0) + 1; }
+  });
+  losers.forEach(id => {
+    const p = state.roster.find(p => p.id === id);
+    if (p) { p.losses++; p.games++; if (isZapato) p.zapatosRecibidos = (p.zapatosRecibidos || 0) + 1; }
+  });
+  state.currentGame = null;
+  saveState();
+
+  const winTeam = winnerIdx === 0 ? finished.team1 : finished.team2;
+  document.getElementById('winner-name').textContent = teamDisplayName(winTeam);
+  document.getElementById('winner-name').className = 'winner ' + (winnerIdx === 0 ? 't1' : 't2');
+  document.getElementById('loser-text').textContent = 'ganaron la partida';
+  document.getElementById('final-t1-name').textContent = teamDisplayName(finished.team1);
+  document.getElementById('final-t2-name').textContent = teamDisplayName(finished.team2);
+  document.getElementById('final-t1-score').textContent = finished.team1.total;
+  document.getElementById('final-t2-score').textContent = finished.team2.total;
+  document.getElementById('game-over').classList.add('open');
+
+  window._lastLineup = {
+    t1: { name: finished.team1.name, playerIds: finished.team1.playerIds },
+    t2: { name: finished.team2.name, playerIds: finished.team2.playerIds }
+  };
+  renderHome();
+}
+
+document.getElementById('btn-go-home').addEventListener('click', () => {
+  document.getElementById('game-over').classList.remove('open');
+  showScreen('home');
+});
+document.getElementById('btn-rematch').addEventListener('click', () => {
+  document.getElementById('game-over').classList.remove('open');
+  if (window._lastLineup) {
+    startGame(window._lastLineup.t1, window._lastLineup.t2);
+    showScreen('home');
+  } else {
+    showScreen('new');
+  }
+});
+
+// ============ NEW GAME ============
+let newSelection = { t1: [], t2: [] };
+
+document.getElementById('btn-new-game').addEventListener('click', () => showScreen('new'));
+document.getElementById('btn-new-from-home').addEventListener('click', () => {
+  if (state.currentGame && !confirm('Hay una partida en curso. ¿Empezar una nueva la cancela?')) return;
+  if (state.currentGame) { state.currentGame = null; saveState(); }
+  showScreen('new');
+});
+document.getElementById('btn-cancel-new').addEventListener('click', () => showScreen('home'));
+
+function renderNewGame() {
+  newSelection = { t1: [], t2: [] };
+  const i1 = document.getElementById('new-t1-name');
+  const i2 = document.getElementById('new-t2-name');
+  i1.value = ''; i1.dataset.autofilled = '';
+  i2.value = ''; i2.dataset.autofilled = '';
+  renderChips();
+  updateStartButton();
+}
+
+function checkDuoDinamico(teamKey) {
+  const moy = state.roster.find(p => p.name.toLowerCase() === 'moy');
+  const benny = state.roster.find(p => p.name.toLowerCase() === 'benny');
+  if (!moy || !benny) return;
+  const sel = newSelection[teamKey];
+  const isDuo = sel.length === 2 && sel.includes(moy.id) && sel.includes(benny.id);
+  const input = document.getElementById('new-' + teamKey + '-name');
+  if (isDuo) {
+    if (!input.value || input.value === input.dataset.autofilled) {
+      input.value = 'Dúo Dinámico';
+      input.dataset.autofilled = 'Dúo Dinámico';
+    }
+  } else if (input.value === input.dataset.autofilled) {
+    input.value = '';
+    input.dataset.autofilled = '';
+  }
+}
+
+['new-t1-name', 'new-t2-name'].forEach(id => {
+  const el = document.getElementById(id);
+  el.addEventListener('input', () => { el.dataset.autofilled = ''; });
+});
+
+function renderChips() {
+  ['t1', 't2'].forEach(team => {
+    const container = document.getElementById(team + '-chips');
+    container.innerHTML = state.roster.map(p => {
+      const inThis = newSelection[team].includes(p.id);
+      const inOther = newSelection[team === 't1' ? 't2' : 't1'].includes(p.id);
+      const cls = 'player-chip' + (inThis ? ' selected ' + team : '');
+      const disabled = inOther ? 'disabled' : '';
+      return `<button class="${cls}" data-pid="${p.id}" data-team="${team}" ${disabled}>${escapeHtml(p.name)}</button>`;
+    }).join('');
+    container.querySelectorAll('.player-chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const pid = btn.dataset.pid;
+        const t = btn.dataset.team;
+        const idx = newSelection[t].indexOf(pid);
+        if (idx >= 0) newSelection[t].splice(idx, 1);
+        else newSelection[t].push(pid);
+        checkDuoDinamico(t);
+        renderChips();
+        updateStartButton();
+      });
+    });
+  });
+}
+
+function updateStartButton() {
+  const ok = newSelection.t1.length > 0 && newSelection.t2.length > 0;
+  document.getElementById('btn-start-game').disabled = !ok;
+  document.getElementById('new-hint').textContent = ok
+    ? 'Todo listo. Dale a "Empezar partida".'
+    : 'Selecciona al menos un jugador en cada equipo.';
+}
+
+document.getElementById('btn-start-game').addEventListener('click', () => {
+  if (newSelection.t1.length === 0 || newSelection.t2.length === 0) return;
+  startGame(
+    { name: document.getElementById('new-t1-name').value.trim(), playerIds: newSelection.t1.slice() },
+    { name: document.getElementById('new-t2-name').value.trim(), playerIds: newSelection.t2.slice() }
+  );
+  showScreen('home');
+});
+
+function startGame(t1, t2) {
+  state.currentGame = {
+    startedAt: Date.now(),
+    team1: { name: t1.name || '', playerIds: t1.playerIds, rounds: [] },
+    team2: { name: t2.name || '', playerIds: t2.playerIds, rounds: [] },
+    lastTeam: null
+  };
+  saveState();
+  renderHome();
+}
+
+// ============ STATS / RECORDS / TEAM RANKINGS ============
+function teamNameFromIds(playerIds, customName) {
+  if (customName && customName.trim()) return customName.trim();
+  const names = playerIds.map(id => playerName(id));
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return names.join(' y ');
+  return names.slice(0,-1).join(', ') + ' y ' + names[names.length-1];
+}
+function formatRelativeDate(ts) {
+  const d = new Date(ts);
+  const today = new Date(); today.setHours(0,0,0,0);
+  const dayDiff = Math.floor((today.getTime() - d.setHours(0,0,0,0)) / 86400000);
+  if (dayDiff === 0) return 'hoy';
+  if (dayDiff === 1) return 'ayer';
+  if (dayDiff < 7) return 'hace ' + dayDiff + ' días';
+  return new Date(ts).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' });
+}
+function computeRecords(history) {
+  const r = { highestHand: null, highestHandToday: null, shortestGame: null, longestGame: null, biggestBlowout: null, totalZapatos: 0, lastZapato: null };
+  const startOfToday = new Date(); startOfToday.setHours(0,0,0,0);
+  const todayTs = startOfToday.getTime();
+  for (const g of history) {
+    for (const tIdx of [0,1]) {
+      const t = tIdx === 0 ? g.team1 : g.team2;
+      for (const pts of t.rounds) {
+        const rec = { value: pts, team: t, when: g.endedAt };
+        if (!r.highestHand || pts > r.highestHand.value) r.highestHand = rec;
+        if (g.endedAt >= todayTs && (!r.highestHandToday || pts > r.highestHandToday.value)) r.highestHandToday = rec;
+      }
+    }
+    const totalRounds = g.team1.rounds.length + g.team2.rounds.length;
+    if (!r.shortestGame || totalRounds < r.shortestGame.rounds) r.shortestGame = { rounds: totalRounds, game: g };
+    if (!r.longestGame || totalRounds > r.longestGame.rounds) r.longestGame = { rounds: totalRounds, game: g };
+    const diff = Math.abs(g.team1.total - g.team2.total);
+    if (!r.biggestBlowout || diff > r.biggestBlowout.diff) r.biggestBlowout = { diff, game: g };
+    const winnerTotal = g.winner === 0 ? g.team1.total : g.team2.total;
+    if (winnerTotal === 0) {
+      r.totalZapatos++;
+      if (!r.lastZapato) r.lastZapato = { game: g };
+    }
+  }
+  return r;
+}
+function computeTeamRankings(history) {
+  const teams = new Map();
+  for (const g of history) {
+    [g.team1, g.team2].forEach((t, idx) => {
+      const key = [...t.playerIds].sort().join(',');
+      if (!teams.has(key)) teams.set(key, { playerIds:[...t.playerIds].sort(), customNames:[], wins:0,losses:0,games:0,zapatos:0,zapatosRecibidos:0 });
+      const e = teams.get(key);
+      e.games++;
+      const won = g.winner === idx;
+      if (won) e.wins++; else e.losses++;
+      const winnerTotal = g.winner === 0 ? g.team1.total : g.team2.total;
+      if (winnerTotal === 0) { if (won) e.zapatos++; else e.zapatosRecibidos++; }
+      if (t.name && t.name.trim() && !e.customNames.includes(t.name.trim())) e.customNames.push(t.name.trim());
+    });
+  }
+  return [...teams.values()];
+}
+function renderRecords(records) {
+  const grid = document.getElementById('records-grid');
+  function card(label, valueHtml, sub, valueCls) {
+    return `<div class="record-card">
+      <span class="record-label">${label}</span>
+      <span class="record-value ${valueCls || ''}">${valueHtml}</span>
+      <span class="record-sub">${sub || '&nbsp;'}</span>
+    </div>`;
+  }
+  function handCard(label, h, valueCls) {
+    if (!h) return card(label, '<span class="record-empty">—</span>', 'Aún no hay datos');
+    return card(label, h.value + ' pts',
+      teamNameFromIds(h.team.playerIds, h.team.name) + ' · ' + formatRelativeDate(h.when),
+      valueCls);
+  }
+  const cards = [];
+  cards.push(handCard('Mano más alta', records.highestHand, 'amber'));
+  cards.push(handCard('Mejor mano de hoy', records.highestHandToday, 'amber'));
+  if (records.shortestGame) {
+    const g = records.shortestGame.game;
+    const winTeam = g.winner === 0 ? g.team1 : g.team2;
+    cards.push(card('Partida más corta', records.shortestGame.rounds + ' manos',
+      'Ganó ' + teamNameFromIds(winTeam.playerIds, winTeam.name) + ' · ' + formatRelativeDate(g.endedAt), 'green'));
+  } else cards.push(card('Partida más corta', '<span class="record-empty">—</span>', 'Aún no hay datos'));
+  if (records.biggestBlowout) {
+    const g = records.biggestBlowout.game;
+    const winTeam = g.winner === 0 ? g.team1 : g.team2;
+    const loseTeam = g.winner === 0 ? g.team2 : g.team1;
+    cards.push(card('Paliza más grande', records.biggestBlowout.diff + ' pts',
+      teamNameFromIds(winTeam.playerIds, winTeam.name) + ' vs ' + teamNameFromIds(loseTeam.playerIds, loseTeam.name), 'red'));
+  } else cards.push(card('Paliza más grande', '<span class="record-empty">—</span>', 'Aún no hay datos'));
+  if (records.longestGame) {
+    const g = records.longestGame.game;
+    cards.push(card('Partida más larga', records.longestGame.rounds + ' manos', formatRelativeDate(g.endedAt)));
+  } else cards.push(card('Partida más larga', '<span class="record-empty">—</span>', 'Aún no hay datos'));
+  if (records.totalZapatos > 0 && records.lastZapato) {
+    const g = records.lastZapato.game;
+    const winTeam = g.winner === 0 ? g.team1 : g.team2;
+    const loseTeam = g.winner === 0 ? g.team2 : g.team1;
+    cards.push(card('Zapatos en total', records.totalZapatos + ' 👞',
+      'Último: ' + teamNameFromIds(winTeam.playerIds, winTeam.name) + ' a ' + teamNameFromIds(loseTeam.playerIds, loseTeam.name) + ' · ' + formatRelativeDate(g.endedAt), 'amber'));
+  } else cards.push(card('Zapatos en total', '<span class="record-empty">0</span>', 'Aún nadie le ha hecho zapato a nadie'));
+  grid.innerHTML = cards.join('');
+}
+function renderTeamRankings() {
+  const list = document.getElementById('teams-list');
+  const rankings = computeTeamRankings(state.history);
+  if (rankings.length === 0) {
+    list.innerHTML = '<div class="stat-row" style="color:#6b6b70; justify-content:center; grid-template-columns: 1fr;">Aún no hay partidas registradas.</div>';
+    return;
+  }
+  rankings.sort((a, b) => { if (b.wins !== a.wins) return b.wins - a.wins; return b.games - a.games; });
+  const header = '<div class="team-row header"><div>#</div><div>Equipo</div><div class="num">G</div><div class="num">P</div><div class="num" title="Zapatos hechos">Z</div><div class="num">%</div></div>';
+  const rows = rankings.map((t, i) => {
+    const pct = t.games ? Math.round((t.wins / t.games) * 100) + '%' : '—';
+    const nick = t.customNames[0] || '';
+    const playerList = t.playerIds.map(id => playerName(id)).join(' + ');
+    const teamLabel = nick
+      ? `<div class="t-name">${escapeHtml(nick)}</div><div style="font-size:11px;color:#6b6b70;">${escapeHtml(playerList)}</div>`
+      : `<div class="t-name">${escapeHtml(playerList)}</div>`;
+    let rankCls = '';
+    if (i === 0) rankCls = 'gold'; else if (i === 1) rankCls = 'silver'; else if (i === 2) rankCls = 'bronze';
+    const z = t.zapatos || 0;
+    const zStyle = z > 0 ? 'color:#fbbf24;font-weight:500;' : '';
+    return `<div class="team-row">
+      <span class="rank-badge ${rankCls}">${i+1}</span>
+      <div>${teamLabel}</div>
+      <div class="num">${t.wins}</div>
+      <div class="num">${t.losses}</div>
+      <div class="num" style="${zStyle}">${z}</div>
+      <div class="num">${pct}</div>
+    </div>`;
+  }).join('');
+  list.innerHTML = header + rows;
+}
+function renderStats() {
+  const list = document.getElementById('stats-list');
+  const sorted = [...state.roster].sort((a, b) => {
+    const aPct = a.games ? a.wins / a.games : 0;
+    const bPct = b.games ? b.wins / b.games : 0;
+    if (bPct !== aPct) return bPct - aPct;
+    return b.wins - a.wins;
+  });
+  const header = '<div class="stat-row header"><div>Jugador</div><div class="num">G</div><div class="num">P</div><div class="num" title="Zapatos hechos">Z</div><div class="num">%</div></div>';
+  const rows = sorted.map((p, i) => {
+    const pct = p.games ? Math.round((p.wins / p.games) * 100) + '%' : '—';
+    let rankCls = '';
+    if (p.games > 0) { if (i === 0) rankCls = 'gold'; else if (i === 1) rankCls = 'silver'; else if (i === 2) rankCls = 'bronze'; }
+    const rank = p.games > 0 ? `<span class="rank-badge ${rankCls}">${i+1}</span>` : '<span class="rank-badge">—</span>';
+    const z = p.zapatos || 0;
+    const zStyle = z > 0 ? 'color:#fbbf24;font-weight:500;' : '';
+    return `<div class="stat-row"><div class="name">${rank}${escapeHtml(p.name)}</div><div class="num">${p.wins}</div><div class="num">${p.losses}</div><div class="num" style="${zStyle}">${z}</div><div class="num">${pct}</div></div>`;
+  }).join('');
+  list.innerHTML = header + rows;
+  renderRecords(computeRecords(state.history));
+  renderTeamRankings();
+  const totalGames = state.history.length;
+  document.getElementById('stats-meta').textContent = totalGames + ' partida' + (totalGames === 1 ? '' : 's');
+}
+
+// ============ HISTORY ============
+function renderHistory() {
+  const list = document.getElementById('history-list');
+  const empty = document.getElementById('history-empty');
+  if (state.history.length === 0) { list.innerHTML = ''; empty.style.display = 'flex'; return; }
+  empty.style.display = 'none';
+  list.innerHTML = state.history.map(h => {
+    const d = new Date(h.endedAt);
+    const dateStr = d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) +
+                    ' · ' + d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+    return `<div class="history-card">
+      <div class="history-card-head"><span class="history-card-date">${dateStr}</span></div>
+      <div class="history-card-teams">
+        <div class="history-card-team ${h.winner === 0 ? 'winner' : ''}">
+          <div class="h-team-name">${escapeHtml(teamDisplayName(h.team1))}</div>
+          <div class="h-team-players">${h.team1.playerIds.map(id => escapeHtml(playerName(id))).join(', ')}</div>
+          <div class="h-team-score">${h.team1.total}</div>
+        </div>
+        <div class="history-card-team ${h.winner === 1 ? 'winner' : ''}">
+          <div class="h-team-name">${escapeHtml(teamDisplayName(h.team2))}</div>
+          <div class="h-team-players">${h.team2.playerIds.map(id => escapeHtml(playerName(id))).join(', ')}</div>
+          <div class="h-team-score">${h.team2.total}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+document.getElementById('btn-clear-history').addEventListener('click', () => {
+  if (state.history.length === 0) return;
+  if (!confirm('¿Borrar todo el historial y reiniciar estadísticas? Esto afecta a TODOS en la casa.')) return;
+  state.history = [];
+  state.roster.forEach(p => { p.wins = 0; p.losses = 0; p.games = 0; p.zapatos = 0; p.zapatosRecibidos = 0; });
+  saveState();
+  renderHistory();
+  renderStats();
+});
+
+// ============ ROSTER ============
+function renderRoster() {
+  const list = document.getElementById('roster-list');
+  list.innerHTML = state.roster.map(p => `
+    <div class="list-item">
+      <div class="list-item-main">
+        <div class="list-item-title">${escapeHtml(p.name)}</div>
+        <div class="list-item-sub">${p.games} partidas · ${p.wins} ganadas · ${p.zapatos||0} zapatos</div>
+      </div>
+      <button class="delete-btn" data-del="${p.id}" aria-label="Borrar">✕</button>
+    </div>
+  `).join('');
+  list.querySelectorAll('[data-del]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.del;
+      const p = state.roster.find(p => p.id === id);
+      if (!p) return;
+      if (!confirm('¿Borrar a ' + p.name + '? Sus estadísticas se pierden.')) return;
+      state.roster = state.roster.filter(p => p.id !== id);
+      saveState();
+      renderRoster();
+    });
+  });
+}
+document.getElementById('btn-add-player').addEventListener('click', addPlayer);
+document.getElementById('new-player-name').addEventListener('keydown', e => { if (e.key === 'Enter') addPlayer(); });
+function addPlayer() {
+  const input = document.getElementById('new-player-name');
+  const name = input.value.trim();
+  if (!name) return;
+  if (state.roster.some(p => p.name.toLowerCase() === name.toLowerCase())) {
+    alert('Ya hay un jugador con ese nombre.');
+    return;
+  }
+  state.roster.push({ id: 'p' + uid(), name, wins: 0, losses: 0, games: 0, zapatos: 0, zapatosRecibidos: 0 });
+  input.value = '';
+  saveState();
+  renderRoster();
+}
+
+// ============ INTERACTION GUARDS ============
+// Prevent double-tap zoom on iOS
+let lastTap = 0;
+document.addEventListener('touchend', e => {
+  const now = Date.now();
+  if (now - lastTap < 350) e.preventDefault();
+  lastTap = now;
+}, { passive: false });
+
+// Pull immediately when tab becomes visible again
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) pollOnce();
+});
+
+// Network status
+window.addEventListener('online', () => { pollOnce(); pushState(); });
+window.addEventListener('offline', () => setSyncStatus('offline'));
+
+// ============ GO ============
+bootstrap();
+</script>
+</body>
+</html>

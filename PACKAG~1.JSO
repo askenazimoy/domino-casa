@@ -1,0 +1,13 @@
+{
+  "name": "domino-contador",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Contador de dominó sincronizado entre dispositivos. 101 puntos pierde.",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0"
+  }
+}
