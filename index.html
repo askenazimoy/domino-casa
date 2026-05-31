@@ -190,11 +190,12 @@
   .player-chip:disabled { opacity: 0.3; }
 
   .stat-row {
-    display: grid; grid-template-columns: 1fr 42px 42px 42px 56px;
+    display: grid; grid-template-columns: 1fr 36px 36px 36px 42px 50px;
     padding: 11px 16px; align-items: center;
     border-bottom: 0.5px solid #2a2a2a;
     font-size: 14px; gap: 4px;
   }
+  .stat-row .pts { font-weight: 600; color: #fafafa; }
   .stat-row:last-child { border-bottom: none; }
   .stat-row.header {
     font-size: 11px; color: #6b6b70; text-transform: uppercase;
@@ -338,11 +339,12 @@
   .record-empty { font-size: 24px; font-weight: 300; color: #3a3a3f; }
 
   .team-row {
-    display: grid; grid-template-columns: 26px 1fr 32px 32px 32px 44px;
+    display: grid; grid-template-columns: 24px 1fr 28px 28px 28px 36px 42px;
     padding: 11px 16px; align-items: center;
     border-bottom: 0.5px solid #2a2a2a;
-    font-size: 14px; gap: 6px;
+    font-size: 14px; gap: 5px;
   }
+  .team-row .pts { font-weight: 600; color: #fafafa; }
   .team-row:last-child { border-bottom: none; }
   .team-row.header {
     font-size: 11px; color: #6b6b70; text-transform: uppercase;
@@ -472,7 +474,7 @@
     <div class="section">
       <h2>Ranking de jugadores</h2>
       <div class="list" id="stats-list"></div>
-      <p class="hint">G = ganadas, P = perdidas, Z = zapatos hechos, % de victorias.</p>
+      <p class="hint">G = ganadas, P = perdidas, Z = zapatos hechos, Pts = G + Z (zapato vale doble), % de victorias.</p>
     </div>
     <div class="section">
       <h2>Equipos más juntados</h2>
@@ -1187,8 +1189,14 @@ function renderTeamRankings() {
     list.innerHTML = '<div class="stat-row" style="color:#6b6b70; justify-content:center; grid-template-columns: 1fr;">Aún no hay partidas registradas.</div>';
     return;
   }
-  rankings.sort((a, b) => { if (b.wins !== a.wins) return b.wins - a.wins; return b.games - a.games; });
-  const header = '<div class="team-row header"><div>#</div><div>Equipo</div><div class="num">G</div><div class="num">P</div><div class="num" title="Zapatos hechos">Z</div><div class="num">%</div></div>';
+  rankings.sort((a, b) => {
+    const aPts = a.wins + (a.zapatos || 0);
+    const bPts = b.wins + (b.zapatos || 0);
+    if (bPts !== aPts) return bPts - aPts;
+    if (b.wins !== a.wins) return b.wins - a.wins;
+    return b.games - a.games;
+  });
+  const header = '<div class="team-row header"><div>#</div><div>Equipo</div><div class="num">G</div><div class="num">P</div><div class="num" title="Zapatos hechos">Z</div><div class="num" title="Puntos: G + Z (zapato vale doble)">Pts</div><div class="num">%</div></div>';
   const rows = rankings.map((t, i) => {
     const pct = t.games ? Math.round((t.wins / t.games) * 100) + '%' : '—';
     const nick = t.customNames[0] || '';
@@ -1200,12 +1208,14 @@ function renderTeamRankings() {
     if (i === 0) rankCls = 'gold'; else if (i === 1) rankCls = 'silver'; else if (i === 2) rankCls = 'bronze';
     const z = t.zapatos || 0;
     const zStyle = z > 0 ? 'color:#fbbf24;font-weight:500;' : '';
+    const pts = t.wins + z;
     return `<div class="team-row">
       <span class="rank-badge ${rankCls}">${i+1}</span>
       <div>${teamLabel}</div>
       <div class="num">${t.wins}</div>
       <div class="num">${t.losses}</div>
       <div class="num" style="${zStyle}">${z}</div>
+      <div class="num pts">${pts}</div>
       <div class="num">${pct}</div>
     </div>`;
   }).join('');
@@ -1213,13 +1223,17 @@ function renderTeamRankings() {
 }
 function renderStats() {
   const list = document.getElementById('stats-list');
+  // Pts = wins + zapatos (cada zapato vale doble: 1 por la victoria + 1 extra)
   const sorted = [...state.roster].sort((a, b) => {
+    const aPts = (a.wins || 0) + (a.zapatos || 0);
+    const bPts = (b.wins || 0) + (b.zapatos || 0);
+    if (bPts !== aPts) return bPts - aPts;
+    if (b.wins !== a.wins) return b.wins - a.wins;
     const aPct = a.games ? a.wins / a.games : 0;
     const bPct = b.games ? b.wins / b.games : 0;
-    if (bPct !== aPct) return bPct - aPct;
-    return b.wins - a.wins;
+    return bPct - aPct;
   });
-  const header = '<div class="stat-row header"><div>Jugador</div><div class="num">G</div><div class="num">P</div><div class="num" title="Zapatos hechos">Z</div><div class="num">%</div></div>';
+  const header = '<div class="stat-row header"><div>Jugador</div><div class="num">G</div><div class="num">P</div><div class="num" title="Zapatos hechos">Z</div><div class="num" title="Puntos: G + Z (zapato vale doble)">Pts</div><div class="num">%</div></div>';
   const rows = sorted.map((p, i) => {
     const pct = p.games ? Math.round((p.wins / p.games) * 100) + '%' : '—';
     let rankCls = '';
@@ -1227,7 +1241,8 @@ function renderStats() {
     const rank = p.games > 0 ? `<span class="rank-badge ${rankCls}">${i+1}</span>` : '<span class="rank-badge">—</span>';
     const z = p.zapatos || 0;
     const zStyle = z > 0 ? 'color:#fbbf24;font-weight:500;' : '';
-    return `<div class="stat-row"><div class="name">${rank}${escapeHtml(p.name)}</div><div class="num">${p.wins}</div><div class="num">${p.losses}</div><div class="num" style="${zStyle}">${z}</div><div class="num">${pct}</div></div>`;
+    const pts = (p.wins || 0) + z;
+    return `<div class="stat-row"><div class="name">${rank}${escapeHtml(p.name)}</div><div class="num">${p.wins}</div><div class="num">${p.losses}</div><div class="num" style="${zStyle}">${z}</div><div class="num pts">${pts}</div><div class="num">${pct}</div></div>`;
   }).join('');
   list.innerHTML = header + rows;
   renderRecords(computeRecords(state.history));
