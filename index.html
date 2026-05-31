@@ -27,7 +27,16 @@
     display: flex; align-items: center; justify-content: space-between;
     padding: 14px 18px 10px; border-bottom: 0.5px solid #2a2a2a;
   }
-  .header h1 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+  .header h1 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; display: flex; align-items: baseline; gap: 8px; }
+  .header h1 .casa-tag {
+    font-size: 10px; font-weight: 500;
+    color: #6b6b70;
+    background: #1f1f1f;
+    padding: 2px 8px;
+    border-radius: 999px;
+    letter-spacing: 0.02em;
+    text-transform: lowercase;
+  }
   .header .meta { font-size: 12px; color: #6b6b70; display: flex; align-items: center; gap: 6px; }
 
   /* Sync indicator */
@@ -381,7 +390,7 @@
   <div class="screen active" id="screen-home">
     <div class="header">
       <div>
-        <h1>Dominó</h1>
+        <h1>Dominó <span class="casa-tag" id="casa-tag-home">casa</span></h1>
         <div class="meta">
           <span class="sync-dot" id="sync-dot"></span>
           <span id="game-meta">Listo para jugar</span>
@@ -508,6 +517,27 @@
         <button id="btn-add-player">Agregar</button>
       </div>
     </div>
+
+    <div class="section">
+      <h2>Casa actual</h2>
+      <div class="list" style="padding: 14px 16px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+          <div>
+            <div style="font-size: 13px; color: #6b6b70;">Estás jugando en la casa</div>
+            <div style="font-size: 18px; font-weight: 600;" id="casa-current">main</div>
+          </div>
+          <button class="btn ghost" id="btn-copy-casa-url" style="flex: 0; padding: 8px 12px; font-size: 12px;">📋 Copiar link</button>
+        </div>
+        <div style="border-top: 0.5px solid #2a2a2a; padding-top: 12px;">
+          <label style="display: block; font-size: 12px; color: #6b6b70; margin-bottom: 6px;">Cambiar o crear casa</label>
+          <div class="add-player" style="border-top: none; padding: 0;">
+            <input type="text" id="new-casa-code" placeholder="código de casa (ej. loscuates)" maxlength="30">
+            <button id="btn-switch-casa">Ir</button>
+          </div>
+          <p class="hint" style="text-align: left; margin: 8px 0 0;">3-30 caracteres: letras minúsculas, números y guiones. Si no existe, se crea vacía.</p>
+        </div>
+      </div>
+    </div>
   </div>
 
   <nav class="tabbar">
@@ -581,11 +611,21 @@
 
 <script>
 // ============ CONFIG ============
-const STORAGE_KEY = 'domino_state_v2';   // bumped because we sync now
 const TARGET = 101;
 const DEFAULT_PLAYERS = ['Marcos', 'David', 'Ike', 'Moy', 'Benny'];
 const POLL_INTERVAL_MS = 4000;
 const PUSH_DEBOUNCE_MS = 600;
+const CASA_RE = /^[a-z0-9-]{3,30}$/;
+
+// Casa: read from ?casa=xxx in URL, default to "main" (your original house).
+const CASA = (() => {
+  const c = new URL(location.href).searchParams.get('casa');
+  if (c && CASA_RE.test(c.toLowerCase())) return c.toLowerCase();
+  return 'main';
+})();
+
+const STORAGE_KEY = 'domino_state_v3_' + CASA;
+const API_BASE = '/api/state?casa=' + encodeURIComponent(CASA);
 
 // ============ STATE ============
 let state = defaultState();
@@ -645,13 +685,13 @@ function setSyncStatus(status) {
 
 // ============ REMOTE I/O ============
 async function fetchRemoteState() {
-  const r = await fetch('/api/state', { cache: 'no-store' });
+  const r = await fetch(API_BASE, { cache: 'no-store' });
   if (!r.ok) throw new Error('HTTP ' + r.status);
   return r.json();
 }
 
 async function fetchRemoteCheck() {
-  const r = await fetch('/api/state?check=1', { cache: 'no-store' });
+  const r = await fetch(API_BASE + '&check=1', { cache: 'no-store' });
   if (!r.ok) throw new Error('HTTP ' + r.status);
   return r.json();
 }
@@ -661,7 +701,7 @@ async function pushState() {
   pushController = new AbortController();
   setSyncStatus('syncing');
   try {
-    const r = await fetch('/api/state', {
+    const r = await fetch(API_BASE, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(state),
@@ -1346,6 +1386,44 @@ document.addEventListener('visibilitychange', () => {
 // Network status
 window.addEventListener('online', () => { pollOnce(); pushState(); });
 window.addEventListener('offline', () => setSyncStatus('offline'));
+
+// ============ CASA INDICATOR + SWITCH ============
+document.getElementById('casa-tag-home').textContent = 'casa ' + CASA;
+document.getElementById('casa-current').textContent = CASA;
+
+document.getElementById('btn-copy-casa-url').addEventListener('click', async () => {
+  const url = location.origin + '/?casa=' + encodeURIComponent(CASA);
+  try {
+    await navigator.clipboard.writeText(url);
+    const btn = document.getElementById('btn-copy-casa-url');
+    const orig = btn.textContent;
+    btn.textContent = '✓ Copiado';
+    setTimeout(() => { btn.textContent = orig; }, 1500);
+  } catch(e) {
+    alert('Link de la casa:\n' + url);
+  }
+});
+
+function switchCasa() {
+  const input = document.getElementById('new-casa-code');
+  const code = input.value.trim().toLowerCase();
+  if (!code) return;
+  if (!CASA_RE.test(code)) {
+    alert('Código inválido. Usa 3-30 caracteres: letras minúsculas, números y guiones.');
+    return;
+  }
+  if (code === CASA) {
+    alert('Ya estás en esa casa.');
+    return;
+  }
+  // Navigate to the new casa — full page reload reinitializes state, fetches fresh data
+  location.href = location.origin + location.pathname + '?casa=' + encodeURIComponent(code);
+}
+
+document.getElementById('btn-switch-casa').addEventListener('click', switchCasa);
+document.getElementById('new-casa-code').addEventListener('keydown', e => {
+  if (e.key === 'Enter') switchCasa();
+});
 
 // ============ GO ============
 bootstrap();
