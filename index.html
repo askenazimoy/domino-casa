@@ -536,6 +536,10 @@
           </div>
           <p class="hint" style="text-align: left; margin: 8px 0 0;">3-30 caracteres: letras minúsculas, números y guiones. Si no existe, se crea vacía.</p>
         </div>
+        <div style="border-top: 0.5px solid #2a2a2a; padding-top: 12px; margin-top: 12px;">
+          <button id="btn-wipe-casa" class="btn danger" style="width: 100%; padding: 9px;">🗑 Limpiar esta casa</button>
+          <p class="hint" style="text-align: left; margin: 8px 0 0;">Borra jugadores, historial y la partida en curso de esta casa. Acción irreversible.</p>
+        </div>
       </div>
     </div>
   </div>
@@ -612,7 +616,6 @@
 <script>
 // ============ CONFIG ============
 const TARGET = 101;
-const DEFAULT_PLAYERS = ['Marcos', 'David', 'Ike', 'Moy', 'Benny'];
 const POLL_INTERVAL_MS = 4000;
 const PUSH_DEBOUNCE_MS = 600;
 const CASA_RE = /^[a-z0-9-]{3,30}$/;
@@ -636,12 +639,9 @@ let pollTimer = null;
 let lastUserAction = 0;         // ts of last local change; used to ignore self-echoes from polling
 
 function defaultState() {
+  // Casas start empty. Each casa adds its own players.
   return {
-    roster: DEFAULT_PLAYERS.map((name, i) => ({
-      id: 'p' + (i+1), name,
-      wins: 0, losses: 0, games: 0,
-      zapatos: 0, zapatosRecibidos: 0
-    })),
+    roster: [],
     currentGame: null,
     history: []
   };
@@ -860,6 +860,21 @@ function renderHome() {
   if (!g) {
     active.style.display = 'none';
     noGame.style.display = 'flex';
+    // Adjust copy based on whether casa is set up yet
+    const h2 = noGame.querySelector('h2');
+    const p = noGame.querySelector('p');
+    const btn = document.getElementById('btn-new-game');
+    if (state.roster.length === 0) {
+      h2.textContent = 'Casa nueva';
+      p.textContent = 'Empieza agregando los nombres de los jugadores que van a jugar.';
+      btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg> Agregar jugadores';
+      btn.onclick = () => showScreen('roster');
+    } else {
+      h2.textContent = 'Listos para echar partida';
+      p.textContent = 'Arma los equipos y empieza a contar. El primero que llegue a 101 pierde.';
+      btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M12 5v14"/></svg> Nueva partida';
+      btn.onclick = () => showScreen('new');
+    }
     meta.textContent = 'Listo para jugar';
     return;
   }
@@ -1024,7 +1039,7 @@ document.getElementById('btn-rematch').addEventListener('click', () => {
 // ============ NEW GAME ============
 let newSelection = { t1: [], t2: [] };
 
-document.getElementById('btn-new-game').addEventListener('click', () => showScreen('new'));
+// btn-new-game click handler is set dynamically inside renderHome (it changes between "Nueva partida" and "Agregar jugadores" based on roster state)
 document.getElementById('btn-new-from-home').addEventListener('click', () => {
   if (state.currentGame && !confirm('Hay una partida en curso. ¿Empezar una nueva la cancela?')) return;
   if (state.currentGame) { state.currentGame = null; saveState(); }
@@ -1066,8 +1081,13 @@ function checkDuoDinamico(teamKey) {
 });
 
 function renderChips() {
+  const empty = state.roster.length === 0;
   ['t1', 't2'].forEach(team => {
     const container = document.getElementById(team + '-chips');
+    if (empty) {
+      container.innerHTML = '<span style="font-size:12px;color:#6b6b70;">No hay jugadores aún</span>';
+      return;
+    }
     container.innerHTML = state.roster.map(p => {
       const inThis = newSelection[team].includes(p.id);
       const inOther = newSelection[team === 't1' ? 't2' : 't1'].includes(p.id);
@@ -1091,11 +1111,13 @@ function renderChips() {
 }
 
 function updateStartButton() {
-  const ok = newSelection.t1.length > 0 && newSelection.t2.length > 0;
+  const empty = state.roster.length === 0;
+  const ok = !empty && newSelection.t1.length > 0 && newSelection.t2.length > 0;
   document.getElementById('btn-start-game').disabled = !ok;
-  document.getElementById('new-hint').textContent = ok
-    ? 'Todo listo. Dale a "Empezar partida".'
-    : 'Selecciona al menos un jugador en cada equipo.';
+  document.getElementById('new-hint').textContent = empty
+    ? 'Primero agrega jugadores en la pestaña Jugadores.'
+    : (ok ? 'Todo listo. Dale a "Empezar partida".'
+          : 'Selecciona al menos un jugador en cada equipo.');
 }
 
 document.getElementById('btn-start-game').addEventListener('click', () => {
@@ -1331,6 +1353,14 @@ document.getElementById('btn-clear-history').addEventListener('click', () => {
 // ============ ROSTER ============
 function renderRoster() {
   const list = document.getElementById('roster-list');
+  if (state.roster.length === 0) {
+    list.innerHTML = `
+      <div style="padding: 28px 16px; text-align: center; color: #6b6b70;">
+        <div style="font-size: 14px; margin-bottom: 6px;">Aún no hay jugadores en esta casa</div>
+        <div style="font-size: 12px;">Agrega el primero abajo 👇</div>
+      </div>`;
+    return;
+  }
   list.innerHTML = state.roster.map(p => `
     <div class="list-item">
       <div class="list-item-main">
@@ -1346,7 +1376,12 @@ function renderRoster() {
       const id = btn.dataset.del;
       const p = state.roster.find(p => p.id === id);
       if (!p) return;
-      if (!confirm('¿Borrar a ' + p.name + '? Sus estadísticas se pierden.')) return;
+      // Only show warning if there's actually something to lose
+      const hasStats = (p.games || 0) > 0;
+      const msg = hasStats
+        ? '¿Borrar a ' + p.name + '? Sus estadísticas se pierden.'
+        : '¿Borrar a ' + p.name + '?';
+      if (!confirm(msg)) return;
       state.roster = state.roster.filter(p => p.id !== id);
       saveState();
       renderRoster();
@@ -1423,6 +1458,23 @@ function switchCasa() {
 document.getElementById('btn-switch-casa').addEventListener('click', switchCasa);
 document.getElementById('new-casa-code').addEventListener('keydown', e => {
   if (e.key === 'Enter') switchCasa();
+});
+
+document.getElementById('btn-wipe-casa').addEventListener('click', () => {
+  const playerCount = state.roster.length;
+  const gameCount = state.history.length;
+  const summary = playerCount + ' jugadores, ' + gameCount + ' partidas, '
+    + (state.currentGame ? 'partida en curso' : 'sin partida activa');
+  if (!confirm(
+    '¿Limpiar TODO en la casa "' + CASA + '"?\n\n' +
+    'Se va a borrar: ' + summary + '.\n\n' +
+    'Esto es irreversible. Si solo querías cambiar de casa, usa el botón "Ir" de arriba.'
+  )) return;
+  if (!confirm('¿Seguro? Última oportunidad.')) return;
+  state = defaultState();
+  saveState();
+  renderAll();
+  alert('Casa "' + CASA + '" limpia. Lista para empezar de cero.');
 });
 
 // ============ GO ============
