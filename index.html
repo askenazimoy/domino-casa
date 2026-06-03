@@ -327,6 +327,29 @@
   }
   .hint { font-size: 12px; color: #6b6b70; text-align: center; margin: 8px 0 0; }
 
+  /* Casa chips (toggle de casas visitadas) */
+  .casa-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .casa-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #1f1f1f; color: #fafafa;
+    border: 0.5px solid #2a2a2a;
+    border-radius: 999px;
+    padding: 6px 10px 6px 14px;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  .casa-chip.current { background: #1e40af; color: #dbeafe; border-color: #3b82f6; }
+  .casa-chip-name { cursor: pointer; }
+  .casa-chip.current .casa-chip-name { cursor: default; }
+  .casa-chip-x {
+    background: transparent; border: none; color: inherit;
+    cursor: pointer; padding: 0 4px; font-size: 14px;
+    opacity: 0.5;
+    font-family: inherit;
+  }
+  .casa-chip-x:hover { opacity: 1; }
+  .casa-chip.current .casa-chip-x { display: none; }
+
   .records-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .record-card {
     background: #141414; border: 0.5px solid #2a2a2a;
@@ -528,6 +551,10 @@
           </div>
           <button class="btn ghost" id="btn-copy-casa-url" style="flex: 0; padding: 8px 12px; font-size: 12px;">📋 Copiar link</button>
         </div>
+        <div id="visited-casas-section" style="border-top: 0.5px solid #2a2a2a; padding-top: 12px; display: none;">
+          <label style="display: block; font-size: 12px; color: #6b6b70; margin-bottom: 8px;">Saltar a otra casa</label>
+          <div class="casa-chips" id="visited-casas-list"></div>
+        </div>
         <div style="border-top: 0.5px solid #2a2a2a; padding-top: 12px;">
           <label style="display: block; font-size: 12px; color: #6b6b70; margin-bottom: 6px;">Cambiar o crear casa</label>
           <div class="add-player" style="border-top: none; padding: 0;">
@@ -629,6 +656,34 @@ const CASA = (() => {
 
 const STORAGE_KEY = 'domino_state_v3_' + CASA;
 const API_BASE = '/api/state?casa=' + encodeURIComponent(CASA);
+const VISITED_KEY = 'domino_visited_casas_v1';
+
+// ============ VISITED CASAS REGISTRY ============
+function loadVisitedCasas() {
+  try {
+    const raw = localStorage.getItem(VISITED_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr.filter(v => v && typeof v.casa === 'string' && CASA_RE.test(v.casa));
+  } catch(e) { return []; }
+}
+function saveVisitedCasas(list) {
+  try { localStorage.setItem(VISITED_KEY, JSON.stringify(list)); } catch(e) {}
+}
+function recordVisit(casa) {
+  const list = loadVisitedCasas();
+  const now = Date.now();
+  const existing = list.find(v => v.casa === casa);
+  if (existing) existing.lastVisited = now;
+  else list.push({ casa, lastVisited: now });
+  list.sort((a,b) => b.lastVisited - a.lastVisited);
+  saveVisitedCasas(list);
+}
+function forgetCasa(casa) {
+  const list = loadVisitedCasas().filter(v => v.casa !== casa);
+  saveVisitedCasas(list);
+}
 
 // ============ STATE ============
 let state = defaultState();
@@ -768,6 +823,7 @@ async function pollOnce() {
 
 // ============ INIT FLOW ============
 async function bootstrap() {
+  recordVisit(CASA);
   setSyncStatus('syncing');
   // 1. Try local for instant UI
   const local = loadLocalState();
@@ -1425,6 +1481,38 @@ window.addEventListener('offline', () => setSyncStatus('offline'));
 // ============ CASA INDICATOR + SWITCH ============
 document.getElementById('casa-tag-home').textContent = 'casa ' + CASA;
 document.getElementById('casa-current').textContent = CASA;
+
+function renderVisitedCasas() {
+  const list = loadVisitedCasas();
+  const section = document.getElementById('visited-casas-section');
+  const container = document.getElementById('visited-casas-list');
+  // Show section only if there's at least one OTHER casa to toggle to (or any visited at all)
+  if (list.length === 0) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+  container.innerHTML = list.map(v => {
+    const isCurrent = v.casa === CASA;
+    return `<div class="casa-chip ${isCurrent ? 'current' : ''}">
+      <span class="casa-chip-name" data-go="${escapeHtml(v.casa)}">${escapeHtml(v.casa)}${isCurrent ? ' ●' : ''}</span>
+      ${isCurrent ? '' : `<button class="casa-chip-x" data-forget="${escapeHtml(v.casa)}" aria-label="Quitar de la lista">✕</button>`}
+    </div>`;
+  }).join('');
+  container.querySelectorAll('[data-go]').forEach(el => {
+    el.addEventListener('click', () => {
+      const target = el.dataset.go;
+      if (target === CASA) return;
+      location.href = location.origin + location.pathname + '?casa=' + encodeURIComponent(target);
+    });
+  });
+  container.querySelectorAll('[data-forget]').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const target = el.dataset.forget;
+      forgetCasa(target);
+      renderVisitedCasas();
+    });
+  });
+}
+renderVisitedCasas();
 
 document.getElementById('btn-copy-casa-url').addEventListener('click', async () => {
   const url = location.origin + '/?casa=' + encodeURIComponent(CASA);
