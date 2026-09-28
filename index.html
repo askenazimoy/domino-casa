@@ -824,6 +824,8 @@ async function pollOnce() {
 // ============ INIT FLOW ============
 async function bootstrap() {
   recordVisit(CASA);
+  // Re-render the visited casas list now that the current one is saved
+  if (typeof renderVisitedCasas === 'function') renderVisitedCasas();
   setSyncStatus('syncing');
   // 1. Try local for instant UI
   const local = loadLocalState();
@@ -1486,14 +1488,14 @@ function renderVisitedCasas() {
   const list = loadVisitedCasas();
   const section = document.getElementById('visited-casas-section');
   const container = document.getElementById('visited-casas-list');
-  // Show section only if there's at least one OTHER casa to toggle to (or any visited at all)
-  if (list.length === 0) { section.style.display = 'none'; return; }
+  // Show section only if there's at least one OTHER casa to switch to
+  const others = list.filter(v => v.casa !== CASA);
+  if (others.length === 0) { section.style.display = 'none'; return; }
   section.style.display = 'block';
-  container.innerHTML = list.map(v => {
-    const isCurrent = v.casa === CASA;
-    return `<div class="casa-chip ${isCurrent ? 'current' : ''}">
-      <span class="casa-chip-name" data-go="${escapeHtml(v.casa)}">${escapeHtml(v.casa)}${isCurrent ? ' ●' : ''}</span>
-      ${isCurrent ? '' : `<button class="casa-chip-x" data-forget="${escapeHtml(v.casa)}" aria-label="Quitar de la lista">✕</button>`}
+  container.innerHTML = others.map(v => {
+    return `<div class="casa-chip">
+      <span class="casa-chip-name" data-go="${escapeHtml(v.casa)}">${escapeHtml(v.casa)}</span>
+      <button class="casa-chip-x" data-forget="${escapeHtml(v.casa)}" aria-label="Quitar de la lista">✕</button>
     </div>`;
   }).join('');
   container.querySelectorAll('[data-go]').forEach(el => {
