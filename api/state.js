@@ -1,19 +1,31 @@
 // Vercel serverless function: GET and POST the shared state per "casa".
-// Uses the Supabase service role key, which is server-side only.
+// Storage: Neon Postgres via @neondatabase/serverless.
 //
 // Each casa is a single row in domino_state keyed by id = casa code.
 // Casa codes: lowercase a-z, 0-9, hyphens, 3-30 chars.
 
-import { createClient } from '@supabase/supabase-js';
+import { neon } from '@neondatabase/serverless';
 
 const DEFAULT_CASA = 'main';
 const CASA_RE = /^[a-z0-9-]{3,30}$/;
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
-  { auth: { persistSession: false } }
-);
+// Vercel's Neon integration provides POSTGRES_URL (pooled).
+// Non-pooled is fine here since we do at most one query per invocation.
+const sql = neon(process.env.POSTGRES_URL || process.env.DATABASE_URL);
+
+// Self-heal schema on first request per cold start. Idempotent, cheap.
+let schemaReady = null;
+async function ensureSchema() {
+  if (schemaReady) return schemaReady;
+  schemaReady = (async () => {
+    await sql`CREATE TABLE IF NOT EXISTS domino_state (
+      id text PRIMARY KEY,
+      data jsonb NOT NULL DEFAULT '{}'::jsonb,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`;
+  })();
+  return schemaReady;
+}
 
 function resolveCasa(req) {
   const raw = (req.query && req.query.casa) || DEFAULT_CASA;
@@ -22,7 +34,6 @@ function resolveCasa(req) {
 }
 
 export default async function handler(req, res) {
-  // No-cache so polling always sees fresh data
   res.setHeader('Cache-Control', 'no-store, max-age=0');
 
   const casa = resolveCasa(req);
@@ -31,58 +42,49 @@ export default async function handler(req, res) {
   }
 
   try {
+    await ensureSchema();
+
     if (req.method === 'GET') {
-      // Quick check mode: ?check=1 returns only updated_at for cheap polling
       const checkOnly = req.query && req.query.check;
 
-      const cols = checkOnly ? 'updated_at' : 'data, updated_at';
-      const { data, error } = await supabase
-        .from('domino_state')
-        .select(cols)
-        .eq('id', casa)
-        .maybeSingle();
+      const rows = checkOnly
+        ? await sql`SELECT updated_at FROM domino_state WHERE id = ${casa} LIMIT 1`
+        : await sql`SELECT data, updated_at FROM domino_state WHERE id = ${casa} LIMIT 1`;
 
-      if (error) return res.status(500).json({ error: error.message });
-
-      if (!data) {
-        // Casa doesn't exist yet — return empty defaults
+      if (!rows || rows.length === 0) {
         return res.json({ casa, data: {}, updated_at: null });
       }
-
-      if (checkOnly) return res.json({ casa, updated_at: data.updated_at });
-      return res.json({ casa, data: data.data || {}, updated_at: data.updated_at });
+      const row = rows[0];
+      if (checkOnly) return res.json({ casa, updated_at: row.updated_at });
+      return res.json({ casa, data: row.data || {}, updated_at: row.updated_at });
     }
 
     if (req.method === 'POST') {
-      // Body is already parsed JSON in Vercel Node functions
       const body = req.body;
       if (!body || typeof body !== 'object') {
         return res.status(400).json({ error: 'Invalid body' });
       }
-
-      // Reject oversized payloads (sanity check — Supabase jsonb is generous but no point pushing huge blobs)
       const size = JSON.stringify(body).length;
       if (size > 500_000) {
         return res.status(413).json({ error: 'Payload too large (>500KB)' });
       }
 
-      const { data, error } = await supabase
-        .from('domino_state')
-        .upsert(
-          { id: casa, data: body, updated_at: new Date().toISOString() },
-          { onConflict: 'id' }
-        )
-        .select('updated_at')
-        .single();
-
-      if (error) return res.status(500).json({ error: error.message });
-      return res.json({ ok: true, casa, updated_at: data.updated_at });
+      // Upsert: insert new casa or update the existing one.
+      // updated_at trigger on the table handles the timestamp.
+      const rows = await sql`
+        INSERT INTO domino_state (id, data)
+        VALUES (${casa}, ${JSON.stringify(body)}::jsonb)
+        ON CONFLICT (id) DO UPDATE
+          SET data = EXCLUDED.data, updated_at = now()
+        RETURNING updated_at
+      `;
+      return res.json({ ok: true, casa, updated_at: rows[0].updated_at });
     }
 
     res.setHeader('Allow', 'GET, POST');
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (err) {
     console.error('API error:', err);
-    return res.status(500).json({ error: 'Internal error' });
+    return res.status(500).json({ error: err.message || 'Internal error' });
   }
 }
