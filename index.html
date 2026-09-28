@@ -1338,7 +1338,7 @@ function renderTeamRankings() {
   const header = '<div class="team-row header"><div>#</div><div>Equipo</div><div class="num">G</div><div class="num">P</div><div class="num" title="Zapatos hechos">Z</div><div class="num" title="Puntos: G + Z (zapato vale doble)">Pts</div><div class="num" title="Pts / partidas (el zapato cuenta doble)">%</div></div>';
   const rows = rankings.map((t, i) => {
     const ptsForPct = t.wins + (t.zapatos || 0);
-    const pct = t.games ? Math.round((ptsForPct / t.games) * 100) + '%' : '—';
+    const pct = t.games ? Math.min(100, Math.round((ptsForPct / t.games) * 100)) + '%' : '—';
     const nick = t.customNames[0] || '';
     const playerList = t.playerIds.map(id => playerName(id)).join(' + ');
     const teamLabel = nick
@@ -1379,7 +1379,7 @@ function renderStats() {
   const header = '<div class="stat-row header"><div>Jugador</div><div class="num">G</div><div class="num">P</div><div class="num" title="Zapatos hechos">Z</div><div class="num" title="Puntos: G + Z (zapato vale doble)">Pts</div><div class="num" title="Pts / partidas (el zapato cuenta doble)">%</div></div>';
   const rows = sorted.map((p, i) => {
     const ptsForPct = (p.wins || 0) + (p.zapatos || 0);
-    const pct = p.games ? Math.round((ptsForPct / p.games) * 100) + '%' : '—';
+    const pct = p.games ? Math.min(100, Math.round((ptsForPct / p.games) * 100)) + '%' : '—';
     let rankCls = '';
     if (p.games > 0) { if (i === 0) rankCls = 'gold'; else if (i === 1) rankCls = 'silver'; else if (i === 2) rankCls = 'bronze'; }
     const rank = p.games > 0 ? `<span class="rank-badge ${rankCls}">${i+1}</span>` : '<span class="rank-badge">—</span>';
