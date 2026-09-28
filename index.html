@@ -647,14 +647,32 @@ const POLL_INTERVAL_MS = 4000;
 const PUSH_DEBOUNCE_MS = 600;
 const CASA_RE = /^[a-z0-9-]{3,30}$/;
 
-// Casa: read from ?casa=xxx in URL, default to "main" (your original house).
+// Casa: read from ?casa=xxx in URL. If missing, redirect to last-used casa (or "main").
+const LAST_CASA_KEY = 'domino_last_casa_v1';
+
 const CASA = (() => {
-  const c = new URL(location.href).searchParams.get('casa');
-  if (c && CASA_RE.test(c.toLowerCase())) return c.toLowerCase();
+  const url = new URL(location.href);
+  const c = url.searchParams.get('casa');
+  if (c && CASA_RE.test(c.toLowerCase())) {
+    const casa = c.toLowerCase();
+    try { localStorage.setItem(LAST_CASA_KEY, casa); } catch(e) {}
+    return casa;
+  }
+  // No casa in URL — try to restore the last one we were in
+  let last = null;
+  try { last = localStorage.getItem(LAST_CASA_KEY); } catch(e) {}
+  if (last && CASA_RE.test(last)) {
+    url.searchParams.set('casa', last);
+    location.replace(url.toString());
+    // The redirect will restart the script; return something valid so nothing crashes in the meantime
+    return last;
+  }
   return 'main';
 })();
 
-const STORAGE_KEY = 'domino_state_v3_' + CASA;
+// Bumped to v4 (from v3) to invalidate stale localStorage from the Supabase-era migration.
+// If your browser still has old cached data, it starts fresh with v4 and the server (Neon) is authoritative.
+const STORAGE_KEY = 'domino_state_v4_' + CASA;
 const API_BASE = '/api/state?casa=' + encodeURIComponent(CASA);
 const VISITED_KEY = 'domino_visited_casas_v1';
 
