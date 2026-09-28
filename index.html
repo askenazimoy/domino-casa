@@ -1310,7 +1310,7 @@ function renderTeamRankings() {
     return;
   }
   // Mismo score ajustado que jugadores — justo aunque un equipo juegue mas partidas
-  const adjScore = t => (t.wins + (t.zapatos || 0) + 1) / (t.games + 2);
+  const adjScore = t => (t.wins + (t.zapatos || 0) + 3) / (t.games + 6);
   rankings.sort((a, b) => {
     const diff = adjScore(b) - adjScore(a);
     if (Math.abs(diff) > 0.0001) return diff;
@@ -1344,9 +1344,10 @@ function renderTeamRankings() {
 }
 function renderStats() {
   const list = document.getElementById('stats-list');
-  // Ajustado (Laplace smoothing): (Pts + 1) / (partidas + 2)
-  // Premia jugar mas partidas — evita que un 100% con 2 partidas rebase a un 75% con 20
-  const adjScore = p => ((p.wins || 0) + (p.zapatos || 0) + 1) / ((p.games || 0) + 2);
+  // Ajustado con smoothing Bayesiano: (Pts + 3) / (partidas + 6)
+  // Suma 3 "victorias virtuales" en 6 "partidas virtuales" (50% neutro).
+  // Muestras chiquitas (2-3 partidas) no dominan a jugadores con mas volumen.
+  const adjScore = p => ((p.wins || 0) + (p.zapatos || 0) + 3) / ((p.games || 0) + 6);
   const sorted = [...state.roster].sort((a, b) => {
     // Jugadores sin partidas al final
     if ((a.games || 0) === 0 && (b.games || 0) !== 0) return 1;
