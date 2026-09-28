@@ -506,7 +506,7 @@
     <div class="section">
       <h2>Ranking de jugadores</h2>
       <div class="list" id="stats-list"></div>
-      <p class="hint">G = ganadas, P = perdidas, Z = zapatos hechos, Pts = G + Z (zapato vale doble), % de victorias.</p>
+      <p class="hint">G = ganadas · P = perdidas · Z = zapatos · Pts = G + Z (zapato doble) · % de victorias. Ordenado por promedio ajustado por número de partidas — así 100% con pocas partidas no rebasa a alguien con más volumen.</p>
     </div>
     <div class="section">
       <h2>Equipos más juntados</h2>
@@ -1309,10 +1309,11 @@ function renderTeamRankings() {
     list.innerHTML = '<div class="stat-row" style="color:#6b6b70; justify-content:center; grid-template-columns: 1fr;">Aún no hay partidas registradas.</div>';
     return;
   }
+  // Mismo score ajustado que jugadores — justo aunque un equipo juegue mas partidas
+  const adjScore = t => (t.wins + (t.zapatos || 0) + 1) / (t.games + 2);
   rankings.sort((a, b) => {
-    const aPts = a.wins + (a.zapatos || 0);
-    const bPts = b.wins + (b.zapatos || 0);
-    if (bPts !== aPts) return bPts - aPts;
+    const diff = adjScore(b) - adjScore(a);
+    if (Math.abs(diff) > 0.0001) return diff;
     if (b.wins !== a.wins) return b.wins - a.wins;
     return b.games - a.games;
   });
@@ -1343,15 +1344,17 @@ function renderTeamRankings() {
 }
 function renderStats() {
   const list = document.getElementById('stats-list');
-  // Pts = wins + zapatos (cada zapato vale doble: 1 por la victoria + 1 extra)
+  // Ajustado (Laplace smoothing): (Pts + 1) / (partidas + 2)
+  // Premia jugar mas partidas — evita que un 100% con 2 partidas rebase a un 75% con 20
+  const adjScore = p => ((p.wins || 0) + (p.zapatos || 0) + 1) / ((p.games || 0) + 2);
   const sorted = [...state.roster].sort((a, b) => {
-    const aPts = (a.wins || 0) + (a.zapatos || 0);
-    const bPts = (b.wins || 0) + (b.zapatos || 0);
-    if (bPts !== aPts) return bPts - aPts;
+    // Jugadores sin partidas al final
+    if ((a.games || 0) === 0 && (b.games || 0) !== 0) return 1;
+    if ((b.games || 0) === 0 && (a.games || 0) !== 0) return -1;
+    const diff = adjScore(b) - adjScore(a);
+    if (Math.abs(diff) > 0.0001) return diff;
     if (b.wins !== a.wins) return b.wins - a.wins;
-    const aPct = a.games ? a.wins / a.games : 0;
-    const bPct = b.games ? b.wins / b.games : 0;
-    return bPct - aPct;
+    return (b.games || 0) - (a.games || 0);
   });
   const header = '<div class="stat-row header"><div>Jugador</div><div class="num">G</div><div class="num">P</div><div class="num" title="Zapatos hechos">Z</div><div class="num" title="Puntos: G + Z (zapato vale doble)">Pts</div><div class="num">%</div></div>';
   const rows = sorted.map((p, i) => {
