@@ -1338,9 +1338,9 @@ function renderTeamRankings() {
   const header = '<div class="team-row header"><div>#</div><div>Equipo</div><div class="num">G</div><div class="num">P</div><div class="num" title="Zapatos hechos">Z</div><div class="num" title="Puntos: G + Z (zapato vale doble)">Pts</div><div class="num" title="Pts / partidas (el zapato cuenta doble)">%</div></div>';
   const rows = rankings.map((t, i) => {
     // Mismo % ponderado que jugadores (zapato +0.5 al ganador, -0.5 al que lo recibio)
-    const w = t.wins || 0, z = t.zapatos || 0, zr = t.zapatosRecibidos || 0;
-    const raw = t.games ? (2*w + z - zr) / (2 * t.games) : 0;
-    const pct = t.games ? Math.max(0, Math.min(100, Math.round(raw * 100))) + '%' : '—';
+    const tW = t.wins || 0, tZ = t.zapatos || 0, tZR = t.zapatosRecibidos || 0;
+    const tRaw = t.games ? (2*tW + tZ - tZR) / (2 * t.games) : 0;
+    const pct = t.games ? Math.max(0, Math.min(100, Math.round(tRaw * 100))) + '%' : '—';
     const nick = t.customNames[0] || '';
     const playerList = t.playerIds.map(id => playerName(id)).join(' + ');
     const teamLabel = nick
@@ -1383,9 +1383,9 @@ function renderStats() {
     // % ponderado: zapato +0.5 al ganador, -0.5 al que lo recibio.
     // Normal win = 1 pt. Zapato win = 1.5 pt. Loss = 0. Zapato recibido = -0.5.
     // Formula: (2*W + Z - ZR) / (2*partidas) * 100. Cappeado 0-100.
-    const w = p.wins || 0, z = p.zapatos || 0, zr = p.zapatosRecibidos || 0;
-    const raw = p.games ? (2*w + z - zr) / (2 * p.games) : 0;
-    const pct = p.games ? Math.max(0, Math.min(100, Math.round(raw * 100))) + '%' : '—';
+    const pW = p.wins || 0, pZ = p.zapatos || 0, pZR = p.zapatosRecibidos || 0;
+    const pRaw = p.games ? (2*pW + pZ - pZR) / (2 * p.games) : 0;
+    const pct = p.games ? Math.max(0, Math.min(100, Math.round(pRaw * 100))) + '%' : '—';
     let rankCls = '';
     if (p.games > 0) { if (i === 0) rankCls = 'gold'; else if (i === 1) rankCls = 'silver'; else if (i === 2) rankCls = 'bronze'; }
     const rank = p.games > 0 ? `<span class="rank-badge ${rankCls}">${i+1}</span>` : '<span class="rank-badge">—</span>';
